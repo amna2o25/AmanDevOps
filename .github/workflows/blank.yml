@@ -78,11 +78,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v2
-      - name: Terraform Init
-        run: terraform init \
-          -backend-config="bucket=${{ env.TF_BACKEND_BUCKET }}" \
-          -backend-config="key=staging/terraform.tfstate" \
-          -backend-config="region=${{ env.TF_BACKEND_REGION }}"
       - name: Terraform Apply
         run: terraform apply -auto-approve -var-file="envs/staging/main.tfvars"
 
