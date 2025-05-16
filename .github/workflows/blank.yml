@@ -78,8 +78,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v2
-      - name: Terraform Apply
-        run: terraform apply -auto-approve -var-file="envs/staging/main.tfvars"
 
   # Deploy to staging via FTP
   deploy-staging:
