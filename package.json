@@ -1,0 +1,8 @@
+{
+    "name": "php-project",
+    "private": true,
+    "devDependencies": {
+      "htmlhint": "^1.0.0"
+    }
+  }
+  

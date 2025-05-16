@@ -1,8 +1,7 @@
-name:  Full CI/CD + IaC + Monitoring + Scalability Pipeline
+name: Full CI/CD + IaC + Monitoring + Scalability Pipeline
 
 on:
   pull_request:
-    # Run CI, lint, tests, and Terraform plan on any code or infra changes
     paths:
       - 'src/**'
       - 'infra/**'
@@ -12,50 +11,51 @@ on:
       - main
 
 env:
-  # Terraform settings
   TERRAFORM_WORKING_DIR: infra
   TF_BACKEND_BUCKET: my-terraform-state
   TF_BACKEND_REGION: eu-west-1
-  # Deployment URLs
   STAGING_URL: https://staging.example.com
   PROD_URL: https://www.example.com
 
 jobs:
-  ## 1. Build, Lint & Test (CI)
+  # 1. CI: PHP Lint, Test, Optional HTML/CSS Lint
   ci:
-    name:  Build ✓ Lint ✓ Test
+    name: Build ✓ Lint ✓ Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # --- HTML/PHP Linting ---
-      - name: Set up Node.js
-        uses: actions/setup-node@v2
-        with:
-          node-version: '14'
-      - name: Install htmlhint
-        run: npm install -g htmlhint
-      - name: Find & lint HTML in PHP
-        run: |
-          find . -name "*.php" -exec sh -c 'htmlhint <(grep -oP "(?<=<html>).*?(?=</html>)" {})' \;
+      # --- PHP Setup ---
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.0'
+          tools: composer, phpunit
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist
+
       - name: Validate PHP syntax
         run: find . -name "*.php" -print0 | xargs -0 -n1 php -l
 
-      # --- Unit & Integration Tests ---
-      - name: Setup Node.js for tests
+      - name: Run PHPUnit Tests
+        run: vendor/bin/phpunit --configuration phpunit.xml
+
+      # --- Optional: HTML/CSS Linting ---
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
-      - name: Install Dependencies
-        run: npm ci
-      - name: Run Unit & Integration Tests
-        run: npm test
+      - name: Install htmlhint and stylelint
+        run: npm install -g htmlhint stylelint stylelint-config-standard
+      - name: Lint HTML files
+        run: htmlhint "**/*.html"
+      - name: Lint CSS files
+        run: |
+          echo '{ "extends": "stylelint-config-standard" }' > .stylelintrc.json
+          stylelint "**/*.css"
 
-  ## 2. Terraform Plan on PRs
+  # 2. Terraform Plan on PRs
   terraform-plan:
     name: 🛠️ Terraform Plan
     runs-on: ubuntu-latest
@@ -79,17 +79,15 @@ jobs:
           terraform validate
       - name: Terraform Plan
         id: plan
-        run: terraform plan \
-          -var-file="envs/staging/main.tfvars" \
-          -out=plan.tfplan
+        run: terraform plan -var-file="envs/staging/main.tfvars" -out=plan.tfplan
       - name: Post Plan to PR
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           path: plan.tfplan
 
-  ## 3. Apply Terraform → Staging (manual approval)
+  # 3. Terraform Apply → Staging
   terraform-apply-staging:
-    name:  Terraform Apply → Staging
+    name: Terraform Apply → Staging
     runs-on: ubuntu-latest
     needs: ci
     if: github.ref == 'refs/heads/main'
@@ -106,12 +104,11 @@ jobs:
           -backend-config="key=staging/terraform.tfstate" \
           -backend-config="region=${{ env.TF_BACKEND_REGION }}"
       - name: Terraform Apply
-        run: terraform apply -auto-approve \
-          -var-file="envs/staging/main.tfvars"
+        run: terraform apply -auto-approve -var-file="envs/staging/main.tfvars"
 
-  ## 4. Deploy to Staging via FTP
+  # 4. Deploy to Staging via FTP
   staging-deploy:
-    name:  Deploy to Staging via FTP
+    name: Deploy to Staging via FTP
     runs-on: ubuntu-latest
     needs: terraform-apply-staging
     environment: staging
@@ -124,24 +121,24 @@ jobs:
           password: ${{ secrets.FTP_STAGING_PASSWORD }}
           server-dir: /public_html/staging/
 
-  ## 5. Monitor & Logs (Staging)
+  # 5. Monitor & Logs (Staging)
   monitor-staging:
-    name:  Monitor & Logs (Staging)
+    name: Monitor & Logs (Staging)
     runs-on: ubuntu-latest
     needs: staging-deploy
     steps:
       - run: |
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' ${{ env.STAGING_URL }}/health)
           if [ "$STATUS" -ne 200 ]; then
-            echo " Staging health check failed!"; exit 1;
+            echo "Staging health check failed!"; exit 1;
           fi
       - run: |
           ssh ${{ secrets.SSH_STAGING_USER }}@${{ secrets.SSH_STAGING_HOST }} \
             "tail -n50 /var/log/app/app.log"
 
-  ## 6. Load Test (Staging)
+  # 6. Load Test (Staging)
   load-test-staging:
-    name:  Load Test (Staging)
+    name: Load Test (Staging)
     runs-on: ubuntu-latest
     needs: monitor-staging
     steps:
@@ -155,12 +152,12 @@ jobs:
       - run: |
           AVG=$(jq '.metrics.http_req_duration.avg' staging-results.json)
           if (( $(echo "$AVG > 200" | bc -l) )); then
-            echo " Performance SLA breached"; exit 1;
+            echo "Performance SLA breached"; exit 1;
           fi
 
-  ## 7. Apply Terraform → Production (manual approval)
+  # 7. Terraform Apply → Production
   terraform-apply-prod:
-    name:  Terraform Apply → Production
+    name: Terraform Apply → Production
     runs-on: ubuntu-latest
     needs: load-test-staging
     if: github.ref == 'refs/heads/main'
@@ -177,12 +174,11 @@ jobs:
           -backend-config="key=production/terraform.tfstate" \
           -backend-config="region=${{ env.TF_BACKEND_REGION }}"
       - name: Terraform Apply
-        run: terraform apply -auto-approve \
-          -var-file="envs/production/main.tfvars"
+        run: terraform apply -auto-approve -var-file="envs/production/main.tfvars"
 
-  ## 8. Deploy to Production via FTP
+  # 8. Deploy to Production via FTP
   prod-deploy:
-    name:  Deploy to Production via FTP
+    name: Deploy to Production via FTP
     runs-on: ubuntu-latest
     needs: terraform-apply-prod
     environment: production
@@ -195,24 +191,24 @@ jobs:
           password: ${{ secrets.FTP_PROD_PASSWORD }}
           server-dir: /public_html/L5SW/Amna/
 
-  ## 9. Monitor & Logs (Production)
+  # 9. Monitor & Logs (Production)
   monitor-prod:
-    name:  Monitor & Logs (Production)
+    name: Monitor & Logs (Production)
     runs-on: ubuntu-latest
     needs: prod-deploy
     steps:
       - run: |
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' ${{ env.PROD_URL }}/health)
           if [ "$STATUS" -ne 200 ]; then
-            echo " Production health check failed!"; exit 1;
+            echo "Production health check failed!"; exit 1;
           fi
       - run: |
           ssh ${{ secrets.SSH_PROD_USER }}@${{ secrets.SSH_PROD_HOST }} \
             "tail -n50 /var/log/app/app.log"
 
-  ## 10. Load Test (Production)
+  # 10. Load Test (Production)
   load-test-prod:
-    name:  Load Test (Production)
+    name: Load Test (Production)
     runs-on: ubuntu-latest
     needs: monitor-prod
     steps:
@@ -223,5 +219,5 @@ jobs:
       - run: |
           AVG=$(jq '.metrics.http_req_duration.avg' prod-results.json)
           if (( $(echo "$AVG > 200" | bc -l) )); then
-            echo " Production SLA breached"; exit 1;
+            echo "Production SLA breached"; exit 1;
           fi
