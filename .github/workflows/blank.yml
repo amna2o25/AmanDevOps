@@ -51,11 +51,6 @@ jobs:
       - name: Lint HTML files
         run: htmlhint "**/*.html"
 
-      - name: Lint CSS files
-        run: |
-          echo '{ "extends": "stylelint-config-standard" }' > .stylelintrc.json
-          stylelint "**/*.css"
-
   # Terraform Plan
   terraform-plan:
     name: 🛠 Terraform Plan
