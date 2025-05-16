@@ -29,24 +29,24 @@
  
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>XSS Stored Demo</title>
-</head>
-<body>
-    <h2>XSS Stored Demo</h2>
- 
-    <form method="POST">
-        <input type="text" placeholder="Enter a Comment" name="comment">
-        <input type="submit" name="submit" value="submit">
-    </form>
- 
-    <?php foreach($comments as $comment): ?>
-        <?= $comment ?>
-        <?=htmlspecialchars($comment)?>
-        <br>
-    <? endforeach ?>
- 
-</body>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>XSS Stored Demo</title>
+    </head>
+    <body>
+        <h2>XSS Stored Demo</h2>
+    
+        <form method="POST">
+            <input type="text" placeholder="Enter a Comment" name="comment">
+            <input type="submit" name="submit" value="submit">
+        </form>
+    
+        <?php foreach($comments as $comment): ?>
+            <?= $comment ?>
+            <?=htmlspecialchars($comment)?>
+            <br>
+        <?php endforeach ?>
+    
+    </body>
 </html>
