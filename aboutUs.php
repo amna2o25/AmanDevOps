@@ -55,7 +55,7 @@ ob_end_flush();
     <main>
     <main>
     <!-- About Us Section -->
-    <section id="about-us" class="my-5">
+    <section id="about us" class="my-5">
         <div class="container">
             <h1 class="text-center mb-4">About Us</h1>
             <div class="row">
