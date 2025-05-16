@@ -203,7 +203,7 @@ jobs:
           ssh ${{ secrets.SSH_PROD_USER }}@${{ secrets.SSH_PROD_HOST }} \
             "tail -n50 /var/log/app/app.log"
 
-  # 10. Load Test (Production)
+
   load-test-prod:
     name: Load Test (Production)
     runs-on: ubuntu-latest
