@@ -1,38 +1,61 @@
-# .github/workflows/ci-cd-terraform.yml
-name:  CI/CD + IaC + Monitoring + Scalability Pipeline
+name:  Full CI/CD + IaC + Monitoring + Scalability Pipeline
 
 on:
   pull_request:
-    # Run CI and Terraform plan on any code or infra changes
+    # Run CI, lint, tests, and Terraform plan on any code or infra changes
     paths:
       - 'src/**'
       - 'infra/**'
+      - '**/*.php'
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 env:
+  # Terraform settings
   TERRAFORM_WORKING_DIR: infra
   TF_BACKEND_BUCKET: my-terraform-state
   TF_BACKEND_REGION: eu-west-1
+  # Deployment URLs
   STAGING_URL: https://staging.example.com
   PROD_URL: https://www.example.com
 
 jobs:
-  ## 1. Build & Test (CI)
-  build:
-    name:  Build & Test
+  ## 1. Build, Lint & Test (CI)
+  ci:
+    name:  Build ✓ Lint ✓ Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Node.js
+
+      # --- HTML/PHP Linting ---
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '14'
+      - name: Install htmlhint
+        run: npm install -g htmlhint
+      - name: Find & lint HTML in PHP
+        run: |
+          find . -name "*.php" -exec sh -c 'htmlhint <(grep -oP "(?<=<html>).*?(?=</html>)" {})' \;
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.0'
+      - name: Validate PHP syntax
+        run: find . -name "*.php" -print0 | xargs -0 -n1 php -l
+
+      # --- Unit & Integration Tests ---
+      - name: Setup Node.js for tests
         uses: actions/setup-node@v3
-        with: node-version: '18'
+        with:
+          node-version: '18'
       - name: Install Dependencies
         run: npm ci
       - name: Run Unit & Integration Tests
         run: npm test
 
-  ## 2. Terraform Plan (IaC validation on PRs)
+  ## 2. Terraform Plan on PRs
   terraform-plan:
     name: 🛠️ Terraform Plan
     runs-on: ubuntu-latest
@@ -42,14 +65,15 @@ jobs:
         working-directory: ${{ env.TERRAFORM_WORKING_DIR }}
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+      - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: '1.4.0'
       - name: Terraform Init
         run: terraform init \
           -backend-config="bucket=${{ env.TF_BACKEND_BUCKET }}" \
           -backend-config="key=pr-${{ github.event.pull_request.number }}/terraform.tfstate" \
           -backend-config="region=${{ env.TF_BACKEND_REGION }}"
-      - name: Terraform Format & Validate
+      - name: Terraform fmt & validate
         run: |
           terraform fmt -check
           terraform validate
@@ -58,25 +82,24 @@ jobs:
         run: terraform plan \
           -var-file="envs/staging/main.tfvars" \
           -out=plan.tfplan
-      - name: Post Plan as PR Comment
+      - name: Post Plan to PR
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           path: plan.tfplan
 
-  ## 3. Terraform Apply → Staging (requires approval)
+  ## 3. Apply Terraform → Staging (manual approval)
   terraform-apply-staging:
     name:  Terraform Apply → Staging
     runs-on: ubuntu-latest
+    needs: ci
     if: github.ref == 'refs/heads/main'
-    needs: [build]
-    environment: staging         # requires reviewers in GitHub settings
+    environment: staging
     defaults:
       run:
         working-directory: ${{ env.TERRAFORM_WORKING_DIR }}
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+      - uses: hashicorp/setup-terraform@v2
       - name: Terraform Init
         run: terraform init \
           -backend-config="bucket=${{ env.TF_BACKEND_BUCKET }}" \
@@ -86,7 +109,7 @@ jobs:
         run: terraform apply -auto-approve \
           -var-file="envs/staging/main.tfvars"
 
-  ## 4. Deploy to Staging
+  ## 4. Deploy to Staging via FTP
   staging-deploy:
     name:  Deploy to Staging via FTP
     runs-on: ubuntu-latest
@@ -94,77 +117,60 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
-      - name: Sync Files via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      - uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_STAGING_SERVER }}
           username: ${{ secrets.FTP_STAGING_USERNAME }}
           password: ${{ secrets.FTP_STAGING_PASSWORD }}
           server-dir: /public_html/staging/
 
-  ## 5. Health Check & Logging → Staging
+  ## 5. Monitor & Logs (Staging)
   monitor-staging:
-    name:  Monitor & Log (Staging)
+    name:  Monitor & Logs (Staging)
     runs-on: ubuntu-latest
     needs: staging-deploy
     steps:
-      - name: Check Health Endpoint
-        run: |
+      - run: |
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' ${{ env.STAGING_URL }}/health)
-          echo "Status code: $STATUS"
           if [ "$STATUS" -ne 200 ]; then
-            echo " Staging health check failed!"
-            exit 1
+            echo " Staging health check failed!"; exit 1;
           fi
-      - name: Fetch Recent Logs
-        run: |
-          # Example: stream last 50 lines from remote log via SSH (adjust to your setup)
+      - run: |
           ssh ${{ secrets.SSH_STAGING_USER }}@${{ secrets.SSH_STAGING_HOST }} \
             "tail -n50 /var/log/app/app.log"
 
-  ## 6. Scalability Load Test → Staging
+  ## 6. Load Test (Staging)
   load-test-staging:
     name:  Load Test (Staging)
     runs-on: ubuntu-latest
     needs: monitor-staging
     steps:
       - uses: actions/checkout@v4
-      - name: Install k6
-        run: |
-          sudo apt install -y gnupg2 curl
+      - run: |
+          sudo apt-get update && sudo apt-get install -y gnupg2 curl
           curl -s https://dl.k6.io/key.gpg | sudo apt-key add -
           echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
-          sudo apt update && sudo apt install -y k6
-      - name: Run Load Test
-        run: |
-          k6 run \
-            --vus 50 \
-            --duration 2m \
-            tests/load-test.js \
-            --out json=staging-results.json
-      - name: Assert Performance
-        run: |
+          sudo apt-get update && sudo apt-get install -y k6
+      - run: k6 run --vus 50 --duration 2m tests/load-test.js --out json=staging-results.json
+      - run: |
           AVG=$(jq '.metrics.http_req_duration.avg' staging-results.json)
-          echo "Avg latency: $AVG ms"
           if (( $(echo "$AVG > 200" | bc -l) )); then
-            echo " Performance SLA breached"
-            exit 1
+            echo " Performance SLA breached"; exit 1;
           fi
 
-  ## 7. Terraform Apply → Production (requires approval)
+  ## 7. Apply Terraform → Production (manual approval)
   terraform-apply-prod:
-    name: Terraform Apply → Production
+    name:  Terraform Apply → Production
     runs-on: ubuntu-latest
-    needs: [load-test-staging]
+    needs: load-test-staging
     if: github.ref == 'refs/heads/main'
-    environment: production      # requires reviewers in GitHub settings
+    environment: production
     defaults:
       run:
         working-directory: ${{ env.TERRAFORM_WORKING_DIR }}
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+      - uses: hashicorp/setup-terraform@v2
       - name: Terraform Init
         run: terraform init \
           -backend-config="bucket=${{ env.TF_BACKEND_BUCKET }}" \
@@ -174,7 +180,7 @@ jobs:
         run: terraform apply -auto-approve \
           -var-file="envs/production/main.tfvars"
 
-  ## 8. Deploy to Production
+  ## 8. Deploy to Production via FTP
   prod-deploy:
     name:  Deploy to Production via FTP
     runs-on: ubuntu-latest
@@ -182,52 +188,40 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      - name: Sync Files via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      - uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_PROD_SERVER }}
           username: ${{ secrets.FTP_PROD_USERNAME }}
           password: ${{ secrets.FTP_PROD_PASSWORD }}
           server-dir: /public_html/L5SW/Amna/
 
-  ## 9. Health Check & Logging → Prod
+  ## 9. Monitor & Logs (Production)
   monitor-prod:
-    name:  Monitor & Log (Production)
+    name:  Monitor & Logs (Production)
     runs-on: ubuntu-latest
     needs: prod-deploy
     steps:
-      - name: Check Health Endpoint
-        run: |
+      - run: |
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' ${{ env.PROD_URL }}/health)
           if [ "$STATUS" -ne 200 ]; then
-            echo " Production health check failed!"
-            exit 1
+            echo " Production health check failed!"; exit 1;
           fi
-      - name: Fetch Recent Logs
-        run: |
+      - run: |
           ssh ${{ secrets.SSH_PROD_USER }}@${{ secrets.SSH_PROD_HOST }} \
             "tail -n50 /var/log/app/app.log"
 
-  ## 10. Scalability Load Test → Prod
+  ## 10. Load Test (Production)
   load-test-prod:
     name:  Load Test (Production)
     runs-on: ubuntu-latest
     needs: monitor-prod
     steps:
       - uses: actions/checkout@v4
-      - name: Install k6
-        run: sudo apt-get update && sudo apt-get install -y k6
-      - name: Run Load Test
-        run: |
-          k6 run \
-            --vus 100 \
-            --duration 5m \
-            tests/load-test.js \
-            --out json=prod-results.json
-      - name: Assert Performance
-        run: |
+      - run: |
+          sudo apt-get update && sudo apt-get install -y k6
+      - run: k6 run --vus 100 --duration 5m tests/load-test.js --out json=prod-results.json
+      - run: |
           AVG=$(jq '.metrics.http_req_duration.avg' prod-results.json)
           if (( $(echo "$AVG > 200" | bc -l) )); then
-            echo "Production SLA breached"
-            exit 1
+            echo " Production SLA breached"; exit 1;
           fi
