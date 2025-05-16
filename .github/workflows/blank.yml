@@ -1,157 +1,23 @@
-name: 🌐 Full CI/CD + IaC + Monitoring + Scalability
-
-on:
+on: 
   push:
-    branches: [main]
-  pull_request:
-    paths:
-      - 'src/**'
-      - 'infra/**'
-      - '**/*.php'
-
-env:
-  TERRAFORM_WORKING_DIR: infra
-  TF_BACKEND_BUCKET: my-terraform-state
-  TF_BACKEND_REGION: eu-west-1
-  STAGING_URL: https://staging.example.com
-  PROD_URL: https://www.example.com
+    branches:
+      - main
+name: 🚀 Deploy website on push
 
 jobs:
-  # CI: Lint, Test PHP, Lint HTML/CSS
-  ci:
-    name: 🧪 CI - Lint & Test
+  web-deploy:
+    name: 🎉 Deploy website
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.0'
-          tools: composer, phpunit
-
-      - name: Install Composer dependencies
-        run: composer install --no-interaction --prefer-dist
-
-      - name: Lint PHP syntax
-        run: find . -name "*.php" -print0 | xargs -0 -n1 php -l
-
-      - name: Run PHPUnit tests
-        run: vendor/bin/phpunit --configuration phpunit.xml
-
-      - name: Setup Node.js for asset linting
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-
-      - name: Install linters
-        run: npm install -g htmlhint stylelint stylelint-config-standard
-
-      - name: Lint HTML files
-        run: htmlhint "**/*.html"
-
-  # Terraform Plan
-  terraform-plan:
-    name: 🛠 Terraform Plan
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    defaults:
-      run:
-        working-directory: ${{ env.TERRAFORM_WORKING_DIR }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: '1.4.0'
-
-  # Terraform Apply (Staging)
-  terraform-apply-staging:
-    name: 🏗 Deploy Infra (Staging)
-    runs-on: ubuntu-latest
-    needs: ci
-    if: github.ref == 'refs/heads/main'
-    environment: staging
-    defaults:
-      run:
-        working-directory: ${{ env.TERRAFORM_WORKING_DIR }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v2
-
-  # Deploy to staging via FTP
-  deploy-staging:
-    name: 📂 Deploy to Staging
-    runs-on: ubuntu-latest
-    needs: terraform-apply-staging
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-      - uses: SamKirkland/FTP-Deploy-Action@v4.3.4
-        with:
-          server: ${{ secrets.FTP_STAGING_SERVER }}
-          username: ${{ secrets.FTP_STAGING_USERNAME }}
-          password: ${{ secrets.FTP_STAGING_PASSWORD }}
-          server-dir: /public_html/staging/
-
-  # Health check and logs
-  monitor-staging:
-    name: 🩺 Monitor & Logs (Staging)
-    runs-on: ubuntu-latest
-    needs: deploy-staging
-    steps:
-      - run: |
-          STATUS=$(curl -s -o /dev/null -w '%{http_code}' ${{ env.STAGING_URL }}/health)
-          if [ "$STATUS" -ne 200 ]; then
-            echo "❌ Health check failed!"; exit 1; fi
-      - run: |
-          ssh ${{ secrets.SSH_STAGING_USER }}@${{ secrets.SSH_STAGING_HOST }} \
-          "tail -n50 /var/log/app/app.log"
-
-  # Load test
-  load-test:
-    name: ⚡ Load Test (Staging)
-    runs-on: ubuntu-latest
-    needs: monitor-staging
-    steps:
-      - uses: actions/checkout@v4
-      - run: |
-          sudo apt-get update && sudo apt-get install -y gnupg2 curl
-          curl -s https://dl.k6.io/key.gpg | sudo apt-key add -
-          echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
-          sudo apt-get update && sudo apt-get install -y k6
-      - run: k6 run --vus 50 --duration 2m tests/load-test.js --out json=load-results.json
-      - run: |
-          AVG=$(jq '.metrics.http_req_duration.avg' load-results.json)
-          if (( $(echo "$AVG > 200" | bc -l) )); then
-            echo "❌ Performance SLA breached"; exit 1; fi
-
-  # Deploy to Production via FTP
-  deploy-production:
-    name: 🚀 Deploy to Production
-    runs-on: ubuntu-latest
-    needs: load-test
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-      - uses: SamKirkland/FTP-Deploy-Action@v4.3.4
-        with:
-          server: ${{ secrets.FTP_PROD_SERVER }}
-          username: ${{ secrets.FTP_PROD_USERNAME }}
-          password: ${{ secrets.FTP_PROD_PASSWORD }}
-          server-dir: /public_html/L5SW/Amna/
-
-  # Monitor Production
-  monitor-prod:
-    name: 🩺 Monitor & Logs (Production)
-    runs-on: ubuntu-latest
-    needs: deploy-production
-    steps:
-      - run: |
-          STATUS=$(curl -s -o /dev/null -w '%{http_code}' ${{ env.PROD_URL }}/health)
-          if [ "$STATUS" -ne 200 ]; then
-            echo "❌ Health check failed!"; exit 1; fi
-      - run: |
-          ssh ${{ secrets.SSH_PROD_USER }}@${{ secrets.SSH_PROD_HOST }} \
-          "tail -n50 /var/log/app/app.log"
+    # Checkout the repository
+    - name: 🚚 Get latest code
+      uses: actions/checkout@v4
+    # sync files via FTP
+    - name: 📂 Sync files via FTP
+      uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      with:
+        server: ${{ secrets.FTP_SERVER }}
+        username: ${{ secrets.FTP_USERNAME }}
+        password: ${{ secrets.FTP_PASSWORD }}
+        server-dir: /public_html/L5SW/Amna/
 
