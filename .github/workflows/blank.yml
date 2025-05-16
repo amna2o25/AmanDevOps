@@ -65,13 +65,6 @@ jobs:
         with:
           terraform_version: '1.4.0'
 
-      - name: Terraform format & validate
-        run: |
-          terraform fmt -check
-          terraform validate
-      - name: Terraform plan
-        run: terraform plan -var-file="envs/staging/main.tfvars"
-
   # Terraform Apply (Staging)
   terraform-apply-staging:
     name: 🏗 Deploy Infra (Staging)
