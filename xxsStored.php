@@ -46,7 +46,7 @@
         <?= $comment ?>
         <?= $comment ?>
         <br>
-    <? endforeach ?>
+    <?php endforeach ?>
  
 </body>
 </html>
