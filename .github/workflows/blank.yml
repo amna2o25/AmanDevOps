@@ -65,10 +65,7 @@ jobs:
         with:
           terraform_version: '1.4.0'
       - name: Init Terraform
-        run: terraform init \
-          -backend-config="bucket=${{ env.TF_BACKEND_BUCKET }}" \
-          -backend-config="key=pr-${{ github.event.pull_request.number }}/terraform.tfstate" \
-          -backend-config="region=${{ env.TF_BACKEND_REGION }}"
+        run: terraform init -backend-config="bucket=${{ env.TF_BACKEND_BUCKET }}" -backend-config="key=staging/terraform.tfstate" -backend-config="region=${{ env.TF_BACKEND_REGION }}"
       - name: Terraform format & validate
         run: |
           terraform fmt -check
