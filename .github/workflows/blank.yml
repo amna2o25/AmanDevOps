@@ -188,7 +188,7 @@ jobs:
           password: ${{ secrets.FTP_PROD_PASSWORD }}
           server-dir: /public_html/L5SW/Amna/
 
-  # 9. Monitor & Logs (Production)
+
   monitor-prod:
     name: Monitor & Logs (Production)
     runs-on: ubuntu-latest
