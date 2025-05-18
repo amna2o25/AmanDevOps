@@ -111,7 +111,7 @@ jobs:
 
   # Monitor & Logs
   monitor-staging:
-    name: 🩺 Monitor (Staging)
+    name: 🧼 Monitor (Staging)
     runs-on: ubuntu-latest
     needs: deploy-staging
     steps:
@@ -151,7 +151,7 @@ jobs:
 
   # Monitor Prod
   monitor-prod:
-    name: 🩺 Monitor (Production)
+    name: 🧼 Monitor (Production)
     runs-on: ubuntu-latest
     needs: deploy-production
     steps:
