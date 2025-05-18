@@ -54,7 +54,7 @@ jobs:
       - name: Lint CSS files
         run: |
           echo '{ "extends": "stylelint-config-standard" }' > .stylelintrc.json
-          stylelint "**/*.css"
+          stylelint "**/*.css" "!vendor/**/*.css" "!node_modules/**/*.css"
 
   # Terraform Plan
   terraform-plan:
@@ -70,10 +70,7 @@ jobs:
         with:
           terraform_version: '1.4.0'
       - name: Init Terraform
-        run: terraform init \
-          -backend-config="bucket=${{ env.TF_BACKEND_BUCKET }}" \
-          -backend-config="key=pr-${{ github.event.pull_request.number }}/terraform.tfstate" \
-          -backend-config="region=${{ env.TF_BACKEND_REGION }}"
+        run: terraform init
       - name: Terraform format & validate
         run: |
           terraform fmt -check
@@ -95,10 +92,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v2
       - name: Terraform Init
-        run: terraform init \
-          -backend-config="bucket=${{ env.TF_BACKEND_BUCKET }}" \
-          -backend-config="key=staging/terraform.tfstate" \
-          -backend-config="region=${{ env.TF_BACKEND_REGION }}"
+        run: terraform init
       - name: Terraform Apply
         run: terraform apply -auto-approve -var-file="envs/staging/main.tfvars"
 
@@ -117,7 +111,7 @@ jobs:
           password: ${{ secrets.FTP_STAGING_PASSWORD }}
           server-dir: /public_html/staging/
 
-  # Health check and logs
+  # Health check and logs (Staging)
   monitor-staging:
     name: 🩺 Monitor & Logs (Staging)
     runs-on: ubuntu-latest
@@ -131,7 +125,7 @@ jobs:
           ssh ${{ secrets.SSH_STAGING_USER }}@${{ secrets.SSH_STAGING_HOST }} \
           "tail -n50 /var/log/app/app.log"
 
-  # Load test
+  # Load test (Staging)
   load-test:
     name: ⚡ Load Test (Staging)
     runs-on: ubuntu-latest
@@ -177,5 +171,6 @@ jobs:
       - run: |
           ssh ${{ secrets.SSH_PROD_USER }}@${{ secrets.SSH_PROD_HOST }} \
           "tail -n50 /var/log/app/app.log"
+
 
 
