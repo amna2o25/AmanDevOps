@@ -154,7 +154,7 @@ jobs:
       - run: |
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' ${{ env.PROD_URL }}/health)
           if [ "$STATUS" -ne 200 ]; then
-            echo "❌ Health check failed!"; exit 1; fi
+            echo " Health check failed!"; exit 1; fi
       - run: |
           ssh ${{ secrets.SSH_PROD_USER }}@${{ secrets.SSH_PROD_HOST }} \
           "tail -n50 /var/log/app/app.log"
