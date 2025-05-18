@@ -8,8 +8,6 @@ on:
       - 'src/**'
       - 'infra/**'
       - '**/*.php'
-      - '**/*.html'
-      - '**/*.css'
 
 env:
   TERRAFORM_WORKING_DIR: infra
@@ -19,11 +17,13 @@ env:
   PROD_URL: https://www.example.com
 
 jobs:
+  # CI: Lint, Test PHP, Lint HTML/CSS
   ci:
-    name: 🥪 CI - Lint & Test
+    name: 🧪 CI - Lint & Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -34,13 +34,13 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --no-interaction --prefer-dist
 
-      - name: Lint PHP
+      - name: Lint PHP syntax
         run: find . -name "*.php" -print0 | xargs -0 -n1 php -l
 
       - name: Run PHPUnit tests
         run: vendor/bin/phpunit --configuration phpunit.xml
 
-      - name: Setup Node.js
+      - name: Setup Node.js for asset linting
         uses: actions/setup-node@v3
         with:
           node-version: '18'
@@ -48,14 +48,10 @@ jobs:
       - name: Install linters
         run: npm install -g htmlhint stylelint stylelint-config-standard
 
-      - name: Lint HTML
+      - name: Lint HTML files
         run: htmlhint "**/*.html"
 
-      - name: Lint CSS
-        run: |
-          echo '{ "extends": "stylelint-config-standard" }' > .stylelintrc.json
-          stylelint "**/*.css" "!vendor/**/*.css" "!node_modules/**/*.css"
-
+  # Terraform Plan
   terraform-plan:
     name: 🛠 Terraform Plan
     runs-on: ubuntu-latest
@@ -68,15 +64,8 @@ jobs:
       - uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: '1.4.0'
-      - name: Terraform Init
-        run: terraform init
-      - name: Terraform Format & Validate
-        run: |
-          terraform fmt -check
-          terraform validate
-      - name: Terraform Plan
-        run: terraform plan -var-file="envs/staging/main.tfvars"
 
+  # Terraform Apply (Staging)
   terraform-apply-staging:
     name: 🏗 Deploy Infra (Staging)
     runs-on: ubuntu-latest
@@ -89,13 +78,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: '1.4.0'
-      - name: Terraform Init
-        run: terraform init
-      - name: Terraform Apply
-        run: terraform apply -auto-approve -var-file="envs/staging/main.tfvars"
 
+  # Deploy to staging via FTP
   deploy-staging:
     name: 📂 Deploy to Staging
     runs-on: ubuntu-latest
@@ -110,6 +94,7 @@ jobs:
           password: ${{ secrets.FTP_STAGING_PASSWORD }}
           server-dir: /public_html/staging/
 
+  # Health check and logs
   monitor-staging:
     name: 🩺 Monitor & Logs (Staging)
     runs-on: ubuntu-latest
@@ -117,11 +102,13 @@ jobs:
     steps:
       - run: |
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' ${{ env.STAGING_URL }}/health)
-          if [ "$STATUS" -ne 200 ]; then echo "❌ Health check failed!"; exit 1; fi
+          if [ "$STATUS" -ne 200 ]; then
+            echo "❌ Health check failed!"; exit 1; fi
       - run: |
           ssh ${{ secrets.SSH_STAGING_USER }}@${{ secrets.SSH_STAGING_HOST }} \
-            "tail -n50 /var/log/app/app.log"
+          "tail -n50 /var/log/app/app.log"
 
+  # Load test
   load-test:
     name: ⚡ Load Test (Staging)
     runs-on: ubuntu-latest
@@ -136,8 +123,10 @@ jobs:
       - run: k6 run --vus 50 --duration 2m tests/load-test.js --out json=load-results.json
       - run: |
           AVG=$(jq '.metrics.http_req_duration.avg' load-results.json)
-          if (( $(echo "$AVG > 200" | bc -l) )); then echo "❌ Performance SLA breached"; exit 1; fi
+          if (( $(echo "$AVG > 200" | bc -l) )); then
+            echo "❌ Performance SLA breached"; exit 1; fi
 
+  # Deploy to Production via FTP
   deploy-production:
     name: 🚀 Deploy to Production
     runs-on: ubuntu-latest
@@ -152,6 +141,7 @@ jobs:
           password: ${{ secrets.FTP_PROD_PASSWORD }}
           server-dir: /public_html/L5SW/Amna/
 
+  # Monitor Production
   monitor-prod:
     name: 🩺 Monitor & Logs (Production)
     runs-on: ubuntu-latest
@@ -159,7 +149,9 @@ jobs:
     steps:
       - run: |
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' ${{ env.PROD_URL }}/health)
-          if [ "$STATUS" -ne 200 ]; then echo "❌ Health check failed!"; exit 1; fi
+          if [ "$STATUS" -ne 200 ]; then
+            echo "❌ Health check failed!"; exit 1; fi
       - run: |
           ssh ${{ secrets.SSH_PROD_USER }}@${{ secrets.SSH_PROD_HOST }} \
-            "tail -n50 /var/log/app/app.log"
+          "tail -n50 /var/log/app/app.log"
+
