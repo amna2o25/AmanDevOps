@@ -59,7 +59,7 @@ jobs:
   terraform-plan:
     name: 🛠 Terraform Plan
     runs-on: ubuntu-latest
-     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     defaults:
       run:
         working-directory: ${{ env.TERRAFORM_WORKING_DIR }}
@@ -70,7 +70,7 @@ jobs:
           terraform_version: '1.4.0'
       - run: terraform init
       - run: terraform validate
-      - run: terraform plan
+      - run: terraform plan -out=tfplan
 
   terraform-apply-staging:
     name: 🏗 Deploy Infra (Staging)
@@ -83,8 +83,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: '1.4.0'
       - run: terraform init
-      - run: terraform apply -auto-approve
+      - run: terraform apply -auto-approve tfplan
 
   deploy-staging:
     name: 📂 Deploy to Staging
@@ -103,7 +105,7 @@ jobs:
           server: ${{ secrets.FTP_STAGING_SERVER }}
           username: ${{ secrets.FTP_STAGING_USERNAME }}
           password: ${{ secrets.FTP_STAGING_PASSWORD }}
-            server-dir: /public_html/L5SW/Amna/
+          server-dir: /public_html/L5SW/Amna/
 
   monitor-staging:
     name: 🩺 Monitor & Logs (Staging)
