@@ -36,7 +36,7 @@ jobs:
           server-dir: /public_html/L5SW/Amna/
 
   health-check-staging:
-    name: 🩺 Health Check - Staging
+    name:  Health Check - Staging
     runs-on: ubuntu-latest
     needs: deploy-staging
     steps:
@@ -91,7 +91,7 @@ jobs:
           server-dir: /public_html/L5SW/Amna/
 
   health-check-prod:
-    name: 🩺 Health Check - Production
+    name:  Health Check - Production
     runs-on: ubuntu-latest
     needs: deploy-production
     steps:
