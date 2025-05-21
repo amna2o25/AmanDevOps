@@ -1,127 +1,22 @@
-name: 🌐 Full CI/CD Pipeline
-
-on:
+on: 
   push:
-    branches: [main]
-  pull_request:
-    paths:
-      - 'src/**'
-      - 'infra/**'
-      - '**/*.php'
-
-env:
-  STAGING_URL: https://digitalwhiz.co.uk/L5SW/Amna
-  PROD_URL: https://digitalwhiz.co.uk/L5SW/Amna
+    branches:
+      - main
+name: 🚀 Deploy website on push
 
 jobs:
-  # ----------------------
-  # 1. CI - Lint & Test
-  # ----------------------
-  ci:
-    name: ✅ CI - Lint & Test
+  web-deploy:
+    name: 🎉 Deploy website
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.0'
-          tools: composer, phpunit
-      - run: composer install
-      - run: find . -name "*.php" -print0 | xargs -0 -n1 php -l
-      - run: vendor/bin/phpunit --configuration phpunit.xml
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      - run: npm install -g htmlhint stylelint stylelint-config-standard
-      - run: htmlhint "**/*.html"
-
-  # ----------------------
-  # 2. Mock Terraform Apply
-  # ----------------------
-  terraform-apply-staging:
-    name: 🛠 Terraform (Mock)
-    runs-on: ubuntu-latest
-    needs: ci
-    defaults:
-      run:
-        working-directory: infra
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: '1.4.0'
-      - run: terraform init
-      - run: terraform apply -auto-approve
-
-  # ----------------------
-  # 3. Deploy to Staging
-  # ----------------------
-  deploy-staging:
-    name: 🚀 Deploy to Staging
-    runs-on: ubuntu-latest
-    needs: terraform-apply-staging
-    steps:
-      - uses: actions/checkout@v4
-      - uses: SamKirkland/FTP-Deploy-Action@v4.3.4
-        with:
-          server: ${{ secrets.FTP_STAGING_SERVER }}
-          username: ${{ secrets.FTP_STAGING_USERNAME }}
-          password: ${{ secrets.FTP_STAGING_PASSWORD }}
-          server-dir: /public_html/L5SW/Amna/
-
-  # ----------------------
-  # 4. Health Check (Staging)
-  # ----------------------
-  health-staging:
-    name: 🩺 Health Check (Staging)
-    runs-on: ubuntu-latest
-    needs: deploy-staging
-    steps:
-      - run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.STAGING_URL }})
-          if [ "$STATUS" -ne 200 ]; then
-            echo "❌ Health check failed!"; exit 1
-          fi
-
-  # ----------------------
-  # 5. Manual Approval Before Prod
-  # ----------------------
-  manual-approval:
-    name: ✅ Manual Approval
-    runs-on: ubuntu-latest
-    needs: health-staging
-    environment:
-      name: production
-      url: ${{ env.PROD_URL }}
-    steps:
-      - run: echo "Waiting for manual approval..."
-
-  # ----------------------
-  # 6. Deploy to Production
-  # ----------------------
-  deploy-production:
-    name: 🚀 Deploy to Production
-    runs-on: ubuntu-latest
-    needs: manual-approval
-    steps:
-      - uses: actions/checkout@v4
-      - uses: SamKirkland/FTP-Deploy-Action@v4.3.4
-        with:
-          server: ${{ secrets.FTP_STAGING_SERVER }}
-          username: ${{ secrets.FTP_STAGING_USERNAME }}
-          password: ${{ secrets.FTP_STAGING_PASSWORD }}
-          server-dir: /public_html/L5SW/Amna/
-
-  # ----------------------
-  # 7. Health Check (Production)
-  # ----------------------
-  health-prod:
-    name: 🩺 Health Check (Production)
-    runs-on: ubuntu-latest
-    needs: deploy-production
-    steps:
-      - run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.PROD_URL }})
-          if [ "$STATUS" -ne 200 ]; then
-            echo "❌ Production health check failed!"; exit 1
-          fi
+    # Checkout the repository
+    - name: 🚚 Get latest code
+      uses: actions/checkout@v4
+    # sync files via FTP
+    - name: 📂 Sync files via FTP
+      uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      with:
+        server: ${{ secrets.FTP_SERVER }}
+        username: ${{ secrets.FTP_USERNAME }}
+        password: ${{ secrets.FTP_PASSWORD }}
+        server-dir: /public_html/L5SW/Amna/
