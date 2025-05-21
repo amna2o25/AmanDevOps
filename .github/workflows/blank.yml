@@ -42,7 +42,7 @@ jobs:
         with:
           terraform_version: '1.4.0'
       - run: terraform init
-      - run: terraform apply -auto-approve
+      - run: terraform apply -auto-approve -var-file=../main.tfvars
 
   deploy-staging:
     name: 📂 Deploy to Staging
