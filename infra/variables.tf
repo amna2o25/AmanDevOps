@@ -1,6 +1,5 @@
 variable "aws_region" {
-  type    = string
-  default = "eu-west-1"
+  type = string
 }
 
 variable "bucket_name" {
