@@ -1,4 +1,4 @@
-name: 🌐 Full CI/CD Pipeline with Tests, Split Envs, Monitoring & Scalability
+name: 🔄 Full CI/CD Pipeline with Tests, Split Envs, Monitoring & Scalability
 
 on:
   push:
@@ -6,27 +6,27 @@ on:
       - main
 
 jobs:
-  phpunit:
-    name: 🧪 Run PHPUnit Tests
+  phpunit-tests:
+    name: ✅ Run PHPUnit Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup PHP
+      - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
-      - name: Install Dependencies
+          php-version: 8.1
+      - name: Install dependencies
         run: composer install
-      - name: Run Tests
-        run: vendor/bin/phpunit
+      - name: Run tests
+        run: vendor/bin/phpunit tests
 
   deploy-staging:
     name: 🚀 Deploy to Staging via FTP
     runs-on: ubuntu-latest
-    needs: phpunit
+    needs: phpunit-tests
     steps:
       - uses: actions/checkout@v4
-      - name: 📂 Upload to FTP
+      - name: 📂 Upload to Staging via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -35,73 +35,69 @@ jobs:
           server-dir: /public_html/L5SW/Amna/
 
   health-check-staging:
-    name: 🌡️ Health Check - Staging
+    name: 🔍 Health Check - Staging
     runs-on: ubuntu-latest
     needs: deploy-staging
     steps:
       - name: Check Staging Health
         run: |
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' "https://digitalwhiz.co.uk/L5SW/Amna/")
-          echo "Health check HTTP status: $STATUS"
-          if [ "$STATUS" != "200" ]; then
+          if [ $STATUS -ne 200 ]; then
             echo "❌ Staging health check failed!"
             exit 1
-          else
-            echo "✅ Staging is healthy!"
           fi
+          echo "✅ Staging is healthy."
 
   load-test:
     name: ⚡ Load Testing with k6
     runs-on: ubuntu-latest
     needs: health-check-staging
     steps:
-      - name: Install k6
+      - name: ✅ Install k6 (official method)
         run: |
-          sudo apt install -y gnupg software-properties-common
-          sudo add-apt-repository ppa:loadimpact/k6
-          sudo apt update
-          sudo apt install -y k6
-      - name: Run load test
+          curl -sL https://github.com/grafana/k6/releases/latest/download/k6-v0.47.0-linux-amd64.tar.gz -o k6.tar.gz
+          tar -xzf k6.tar.gz
+          sudo mv k6-v0.47.0-linux-amd64/k6 /usr/local/bin/
+          k6 version
+      - name: 🚀 Run load test
         run: |
           echo 'import http from "k6/http"; export default function () { http.get("https://digitalwhiz.co.uk/L5SW/Amna/"); }' > test.js
           k6 run --duration 10s --vus 5 test.js
 
-  approve-production:
+  approval:
     name: ✅ Manual Approval
     runs-on: ubuntu-latest
     needs: load-test
     steps:
-      - name: Wait for Manual Approval
-        uses: hmarr/auto-approve-action@v2
+      - name: Await Approval
+        uses: hmarr/auto-approve-action@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   deploy-production:
     name: 🚀 Deploy to Production via FTP
     runs-on: ubuntu-latest
-    needs: approve-production
+    needs: approval
     steps:
       - uses: actions/checkout@v4
-      - name: 📂 Upload to FTP (Prod)
+      - name: 📂 Upload to Production
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          server-dir: /public_html/L5SW/Amna/
+          server-dir: /public_html/L5SW/Amna/  # change this path if production is different
 
-  health-check-prod:
-    name: 🌡️ Health Check - Production
+  health-check-production:
+    name: 🔍 Health Check - Production
     runs-on: ubuntu-latest
     needs: deploy-production
     steps:
       - name: Check Production Health
         run: |
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' "https://digitalwhiz.co.uk/L5SW/Amna/")
-          echo "Health check HTTP status: $STATUS"
-          if [ "$STATUS" != "200" ]; then
+          if [ $STATUS -ne 200 ]; then
             echo "❌ Production health check failed!"
             exit 1
-          else
-            echo "✅ Production is healthy!"
           fi
+          echo "✅ Production is healthy."
