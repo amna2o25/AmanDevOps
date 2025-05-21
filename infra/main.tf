@@ -1,8 +1,16 @@
-provider "aws" {
-  region = var.aws_region
+terraform {
+  required_providers {
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
+    }
+  }
 }
 
-resource "aws_s3_bucket" "devops_bucket" {
-  bucket        = var.bucket_name
-  force_destroy = true
+provider "null" {}
+
+resource "null_resource" "example" {
+  provisioner "local-exec" {
+    command = "echo 'Pretending to deploy infra...'"
+  }
 }
