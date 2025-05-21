@@ -1,4 +1,4 @@
-name: 🔄 Full CI/CD Pipeline with Tests, Split Envs, Monitoring & Scalability
+name: 🚀 Full CI/CD Pipeline with Tests, Split Envs, Monitoring & Scalability
 
 on:
   push:
@@ -11,14 +11,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up PHP
+      - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: 8.1
+          php-version: '8.1'
       - name: Install dependencies
-        run: composer install
-      - name: Run tests
-        run: vendor/bin/phpunit tests
+        run: composer install --no-interaction --prefer-dist
+      - name: Run PHPUnit
+        run: ./vendor/bin/phpunit --testdox
 
   deploy-staging:
     name: 🚀 Deploy to Staging via FTP
@@ -26,7 +26,7 @@ jobs:
     needs: phpunit-tests
     steps:
       - uses: actions/checkout@v4
-      - name: 📂 Upload to Staging via FTP
+      - name: 📂 Upload to FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -35,41 +35,45 @@ jobs:
           server-dir: /public_html/L5SW/Amna/
 
   health-check-staging:
-    name: 🔍 Health Check - Staging
+    name: 🩺 Health Check - Staging
     runs-on: ubuntu-latest
     needs: deploy-staging
     steps:
       - name: Check Staging Health
         run: |
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' "https://digitalwhiz.co.uk/L5SW/Amna/")
-          if [ $STATUS -ne 200 ]; then
-            echo "❌ Staging health check failed!"
+          if [ "$STATUS" != "200" ]; then
+            echo "Staging health check failed!"
             exit 1
           fi
-          echo "✅ Staging is healthy."
 
   load-test:
     name: ⚡ Load Testing with k6
     runs-on: ubuntu-latest
     needs: health-check-staging
     steps:
-      - name: ✅ Install k6 (official method)
+      - name: ✅ Install k6 via APT
         run: |
-          curl -sL https://github.com/grafana/k6/releases/latest/download/k6-v0.47.0-linux-amd64.tar.gz -o k6.tar.gz
-          tar -xzf k6.tar.gz
-          sudo mv k6-v0.47.0-linux-amd64/k6 /usr/local/bin/
+          sudo apt update
+          sudo apt install gnupg software-properties-common -y
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://packages.grafana.com/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/grafana.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://packages.grafana.com/oss/deb stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
+          sudo apt update
+          sudo apt install k6 -y
           k6 version
+
       - name: 🚀 Run load test
         run: |
           echo 'import http from "k6/http"; export default function () { http.get("https://digitalwhiz.co.uk/L5SW/Amna/"); }' > test.js
           k6 run --duration 10s --vus 5 test.js
 
-  approval:
+  manual-approval:
     name: ✅ Manual Approval
     runs-on: ubuntu-latest
     needs: load-test
     steps:
-      - name: Await Approval
+      - name: Await manual approval
         uses: hmarr/auto-approve-action@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -77,27 +81,26 @@ jobs:
   deploy-production:
     name: 🚀 Deploy to Production via FTP
     runs-on: ubuntu-latest
-    needs: approval
+    needs: manual-approval
     steps:
       - uses: actions/checkout@v4
-      - name: 📂 Upload to Production
+      - name: 📂 Upload to FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          server-dir: /public_html/L5SW/Amna/  # change this path if production is different
+          server-dir: /public_html/L5SW/Amna/
 
   health-check-production:
-    name: 🔍 Health Check - Production
+    name: 🩺 Health Check - Production
     runs-on: ubuntu-latest
     needs: deploy-production
     steps:
       - name: Check Production Health
         run: |
           STATUS=$(curl -s -o /dev/null -w '%{http_code}' "https://digitalwhiz.co.uk/L5SW/Amna/")
-          if [ $STATUS -ne 200 ]; then
-            echo "❌ Production health check failed!"
+          if [ "$STATUS" != "200" ]; then
+            echo "Production health check failed!"
             exit 1
           fi
-          echo "✅ Production is healthy."
