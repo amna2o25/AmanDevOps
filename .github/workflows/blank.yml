@@ -1,51 +1,59 @@
-name: 🌐 Full CI/CD + IaC + Monitoring + Scalability
+name: 🌐 Full CI/CD with Tests, Split Envs, Monitoring & Scalability
 
 on:
   push:
     branches:
       - main
 
+env:
+  STAGING_URL: https://digitalwhiz.co.uk/L5SW/Amna/home.php
+  PROD_URL: https://digitalwhiz.co.uk/L5SW/Amna/home.php
+
 jobs:
-  deploy:
-    name: 🚀 Deploy Website via FTP
+  phpunit:
+    name: 🧪 Run PHPUnit Tests
     runs-on: ubuntu-latest
     steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.0'
+          tools: composer, phpunit
+      - run: composer install
+      - run: vendor/bin/phpunit --configuration phpunit.xml
 
-      - name: 📂 Upload Files via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+  deploy-staging:
+    name: 📂 Deploy to Staging via FTP
+    runs-on: ubuntu-latest
+    needs: phpunit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           server-dir: /public_html/L5SW/Amna/
 
-  health-check:
-    name: 🩺 Staging Health Check
+  health-check-staging:
+    name: 🩺 Health Check - Staging
     runs-on: ubuntu-latest
-    needs: deploy
+    needs: deploy-staging
     steps:
-      - name: 🔍 Check Health
+      - name: Check if staging is up
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://digitalwhiz.co.uk/L5SW/Amna/home.php)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.STAGING_URL }})
           if [ "$STATUS" -ne 200 ]; then
-            echo "❌ Health check failed! Status: $STATUS"
+            echo "❌ Health check failed with $STATUS"
             exit 1
+          else
+            echo "✅ Health check passed!"
           fi
-          echo "✅ Health check passed!"
-
-  mock-infra:
-    name: ⚙️ Simulated Terraform Apply (IaC)
-    runs-on: ubuntu-latest
-    steps:
-      - name: 🧱 Pretend Infra Deploy
-        run: echo 'Pretending to deploy infrastructure with Terraform...'
 
   load-test:
-    name: ⚡ Load Test with k6
+    name: ⚡ Load Testing with k6
     runs-on: ubuntu-latest
-    needs: health-check
+    needs: health-check-staging
     steps:
       - name: Install k6
         run: |
@@ -55,7 +63,65 @@ jobs:
           echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update && sudo apt-get install -y k6
 
-      - name: Run Load Test
+      - name: Run test
         run: |
-          echo 'import http from "k6/http"; export default function () { http.get("https://digitalwhiz.co.uk/L5SW/Amna/home.php"); }' > test.js
+          echo 'import http from "k6/http"; export default function () { http.get("${{ env.STAGING_URL }}"); }' > test.js
           k6 run --vus 10 --duration 10s test.js
+
+  approve-production:
+    name: ✅ Manual Approval
+    runs-on: ubuntu-latest
+    needs: load-test
+    environment:
+      name: production
+    steps:
+      - run: echo "Waiting for manual approval..."
+
+  deploy-production:
+    name: 🚀 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: approve-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: /public_html/L5SW/Amna/
+
+  health-check-prod:
+    name: 🩺 Health Check - Production
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    steps:
+      - name: Check if production is up
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" ${{ env.PROD_URL }})
+          if [ "$STATUS" -ne 200 ]; then
+            echo "❌ Production health check failed with $STATUS"
+            exit 1
+          else
+            echo "✅ Production health check passed!"
+          fi
+
+  # Optional Placeholder: Log Monitoring (inactive unless SSH secrets are added)
+  # logs:
+  #   name: 📄 Monitor Logs
+  #   runs-on: ubuntu-latest
+  #   needs: health-check-prod
+  #   steps:
+  #     - run: ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "tail -n 50 /var/log/app.log"
+
+  # Optional Placeholder: Slack Alert
+  # slack-notify:
+  #   name: 📣 Notify Slack
+  #   runs-on: ubuntu-latest
+  #   needs: deploy-production
+  #   steps:
+  #     - name: Notify Slack
+  #       uses: slackapi/slack-github-action@v1.24.0
+  #       with:
+  #         payload: '{"text":"✅ Deployment to production was successful!"}'
+  #       env:
+  #         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
