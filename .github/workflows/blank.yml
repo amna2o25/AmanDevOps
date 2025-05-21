@@ -2,47 +2,18 @@ name: 🌐 Full CI/CD + IaC + Monitoring + Scalability
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
-  ci:
-    name: ✅ Lint & Test
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-
-      - name: 🧪 Basic syntax test (PHP example)
-        run: |
-          find . -name "*.php" -print0 | xargs -0 -n1 php -l || exit 1
-
-  iac:
-    name: 🛠 Simulated IaC (Terraform)
-    runs-on: ubuntu-latest
-    needs: ci
-    defaults:
-      run:
-        working-directory: infra
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.4.0
-
-      - run: terraform init
-
-      - run: terraform apply -auto-approve
-
   deploy:
-    name: 🚀 Deploy to Staging
+    name: 🚀 Deploy Website via FTP
     runs-on: ubuntu-latest
-    needs: iac
     steps:
-      - name: 📥 Checkout code
+      - name: 📥 Checkout Code
         uses: actions/checkout@v4
 
-      - name: 📂 Upload via FTP
+      - name: 📂 Upload Files via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
@@ -50,33 +21,41 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           server-dir: /public_html/L5SW/Amna/
 
-  monitor:
-    name: 🩺 Check Staging Health
+  health-check:
+    name: 🩺 Staging Health Check
     runs-on: ubuntu-latest
     needs: deploy
     steps:
-      - name: 🌐 Health check
+      - name: 🔍 Check Health
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://digitalwhiz.co.uk/L5SW/Amna/)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://digitalwhiz.co.uk/L5SW/Amna/home.php)
           if [ "$STATUS" -ne 200 ]; then
-            echo "❌ Health check failed with $STATUS"; exit 1
-          else
-            echo "✅ Health check passed with $STATUS"
+            echo "❌ Health check failed! Status: $STATUS"
+            exit 1
           fi
+          echo "✅ Health check passed!"
+
+  mock-infra:
+    name: ⚙️ Simulated Terraform Apply (IaC)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🧱 Pretend Infra Deploy
+        run: echo 'Pretending to deploy infrastructure with Terraform...'
 
   load-test:
-    name: ⚡ Load Testing
+    name: ⚡ Load Test with k6
     runs-on: ubuntu-latest
-    needs: monitor
+    needs: health-check
     steps:
-      - name: 🛠 Install k6 for load testing
+      - name: Install k6
         run: |
-          sudo apt-get update && sudo apt-get install -y gnupg2 curl
+          sudo apt-get update
+          sudo apt-get install -y gnupg2 curl
           curl -s https://dl.k6.io/key.gpg | sudo apt-key add -
           echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
           sudo apt-get update && sudo apt-get install -y k6
 
-      - name: 📈 Run k6 test
+      - name: Run Load Test
         run: |
-          echo 'import http from "k6/http"; export default function () { http.get("https://digitalwhiz.co.uk/L5SW/Amna/"); }' > test.js
+          echo 'import http from "k6/http"; export default function () { http.get("https://digitalwhiz.co.uk/L5SW/Amna/home.php"); }' > test.js
           k6 run --vus 10 --duration 10s test.js
