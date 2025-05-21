@@ -1,24 +1,82 @@
-on: 
+name: 🌐 Full CI/CD + IaC + Monitoring + Scalability
+
+on:
   push:
-    branches:
-      - main
-name: 🚀 Deploy website on push
+    branches: [main]
 
 jobs:
-  web-deploy:
-    name: 🎉 Deploy website
+  ci:
+    name: ✅ Lint & Test
     runs-on: ubuntu-latest
     steps:
-    # Checkout the repository
-    - name: 🚚 Get latest code
-      uses: actions/checkout@v4
-    # sync files via FTP
-    - name: 📂 Sync files via FTP
-      uses: SamKirkland/FTP-Deploy-Action@v4.3.4
-      with:
-        server: ${{ secrets.FTP_SERVER }}
-        username: ${{ secrets.FTP_USERNAME }}
-        password: ${{ secrets.FTP_PASSWORD }}
-        server-dir: /public_html/L5SW/Amna/
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
 
- 
+      - name: 🧪 Basic syntax test (PHP example)
+        run: |
+          find . -name "*.php" -print0 | xargs -0 -n1 php -l || exit 1
+
+  iac:
+    name: 🛠 Simulated IaC (Terraform)
+    runs-on: ubuntu-latest
+    needs: ci
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.4.0
+
+      - run: terraform init
+
+      - run: terraform apply -auto-approve
+
+  deploy:
+    name: 🚀 Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: iac
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📂 Upload via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: /public_html/L5SW/Amna/
+
+  monitor:
+    name: 🩺 Check Staging Health
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - name: 🌐 Health check
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://digitalwhiz.co.uk/L5SW/Amna/)
+          if [ "$STATUS" -ne 200 ]; then
+            echo "❌ Health check failed with $STATUS"; exit 1
+          else
+            echo "✅ Health check passed with $STATUS"
+          fi
+
+  load-test:
+    name: ⚡ Load Testing
+    runs-on: ubuntu-latest
+    needs: monitor
+    steps:
+      - name: 🛠 Install k6 for load testing
+        run: |
+          sudo apt-get update && sudo apt-get install -y gnupg2 curl
+          curl -s https://dl.k6.io/key.gpg | sudo apt-key add -
+          echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update && sudo apt-get install -y k6
+
+      - name: 📈 Run k6 test
+        run: |
+          echo 'import http from "k6/http"; export default function () { http.get("https://digitalwhiz.co.uk/L5SW/Amna/"); }' > test.js
+          k6 run --vus 10 --duration 10s test.js
